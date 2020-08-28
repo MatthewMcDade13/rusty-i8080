@@ -8,6 +8,6 @@ edition = "2018"
 
 [lib]
 name = "rustyi8080"
-path = "src/main.rs"
+path = "src/cpu.rs"
 
 [dependencies]
