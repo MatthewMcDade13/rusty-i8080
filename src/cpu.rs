@@ -521,7 +521,355 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
         }
     });
 
+    insert_instruction(optable, Instruction { opcode: 0x39, size: 1, disassembly: "DAD SP", func_symbols: "HL <- HL + SP", effected_flags: "CY".into(),
+        func_ptr: |cpu, _, _| { 
+            let hl = combine_bytes(cpu.h, cpu.l);
+            let result = hl + cpu.sp;
+            cpu.check_carry(result);
+            set_register_pair(&mut cpu.h, &mut cpu.l, result);           
+        }
+    });
 
+    insert_instruction(optable, Instruction { opcode: 0x3A, size: 3, disassembly: "LDA adr", func_symbols: "A <- (adr)", effected_flags: None,
+        func_ptr: |cpu, b2, b3| { 
+            let addr = combine_bytes(b3, b2) as usize;
+            cpu.a = cpu.memory[addr];
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x3B, size: 1, disassembly: "DCX SP", func_symbols: "SP <- SP + 1", effected_flags: None,
+        func_ptr: |cpu, b2, b3| { 
+            cpu.sp += 1;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x3C, size: 1, disassembly: "INR A", func_symbols: "A <- A + 1", effected_flags: "Z,S,P,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.inr(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x3D, size: 1, disassembly: "DCR A", func_symbols: "A <- A - 1", effected_flags: "Z,S,P,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.dcr(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x3E, size: 2, disassembly: "MVI A, D8", func_symbols: "A <- byte 2", effected_flags: None,
+        func_ptr: |cpu, b2, _| { 
+            cpu.a = b2;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x3F, size: 1, disassembly: "CMC", func_symbols: "CY = !CY", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            if cpu.condition_codes.is_set(ConditionFlag::Carry) {
+                cpu.condition_codes.unset(ConditionFlag::Carry);
+            } else {
+                cpu.condition_codes.set(ConditionFlag::Carry)
+            }
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x40, size: 1, disassembly: "MOV B, B", func_symbols: "B <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.b;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x40, size: 1, disassembly: "MOV B, B", func_symbols: "B <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.b;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x41, size: 1, disassembly: "MOV B, C", func_symbols: "B <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.c;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x42, size: 1, disassembly: "MOV B, D", func_symbols: "B <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.d;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x43, size: 1, disassembly: "MOV B, E", func_symbols: "B <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.e;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x44, size: 1, disassembly: "MOV B, H", func_symbols: "B <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.h;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x45, size: 1, disassembly: "MOV B, L", func_symbols: "B <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.l;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x46, size: 1, disassembly: "MOV B, M", func_symbols: "B <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;   
+            cpu.b = cpu.memory[addr];
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x47, size: 1, disassembly: "MOV B, A", func_symbols: "B <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.b = cpu.a;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x48, size: 1, disassembly: "MOV C, B", func_symbols: "C <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.b;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x49, size: 1, disassembly: "MOV C, C", func_symbols: "C <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.c;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x4A, size: 1, disassembly: "MOV C, D", func_symbols: "C <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.d;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x4B, size: 1, disassembly: "MOV C, E", func_symbols: "C <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.e;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x4C, size: 1, disassembly: "MOV C, H", func_symbols: "C <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.h;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x4D, size: 1, disassembly: "MOV C, L", func_symbols: "C <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.c = cpu.l;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x4E, size: 1, disassembly: "MOV C, M", func_symbols: "C <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.c = cpu.memory[addr];
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x50, size: 1, disassembly: "MOV D, B", func_symbols: "D <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.b;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x51, size: 1, disassembly: "MOV D, C", func_symbols: "D <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.c;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x52, size: 1, disassembly: "MOV D, D", func_symbols: "D <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.d;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x53, size: 1, disassembly: "MOV D, E", func_symbols: "D <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.e;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x54, size: 1, disassembly: "MOV D, H", func_symbols: "D <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.h;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x55, size: 1, disassembly: "MOV D, L", func_symbols: "D <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+          cpu.d = cpu.l;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x56, size: 1, disassembly: "MOV D, M", func_symbols: "D <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.d = cpu.memory[addr];
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x57, size: 1, disassembly: "MOV D, A", func_symbols: "D <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.d = cpu.a
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x58, size: 1, disassembly: "MOV E, B", func_symbols: "E <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.b
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x59, size: 1, disassembly: "MOV E, C", func_symbols: "E <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.c;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x5A, size: 1, disassembly: "MOV E, D", func_symbols: "E <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.d;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x5B, size: 1, disassembly: "MOV E, E", func_symbols: "E <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.e;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x5C, size: 1, disassembly: "MOV E, H", func_symbols: "E <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.h;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x5D, size: 1, disassembly: "MOV E, L", func_symbols: "E <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.l;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x5E, size: 1, disassembly: "MOV E, M", func_symbols: "E <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;            
+            cpu.e = cpu.memory[addr];
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x5F, size: 1, disassembly: "MOV E, A", func_symbols: "E <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.e = cpu.a;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x60, size: 1, disassembly: "MOV H, B", func_symbols: "H <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.b;
+        }
+    });
+           
+    insert_instruction(optable, Instruction { opcode: 0x61, size: 1, disassembly: "MOV H, C", func_symbols: "H <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.c;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x62, size: 1, disassembly: "MOV H, D", func_symbols: "H <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.d;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x63, size: 1, disassembly: "MOV H, E", func_symbols: "H <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.e;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x64, size: 1, disassembly: "MOV H, H", func_symbols: "H <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.h;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x65, size: 1, disassembly: "MOV H, L", func_symbols: "H <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.l;
+        }
+    });
+        
+    insert_instruction(optable, Instruction { opcode: 0x66, size: 1, disassembly: "MOV H, M", func_symbols: "H <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.h = cpu.memory[addr];
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x67, size: 1, disassembly: "MOV H, A", func_symbols: "H <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.h = cpu.a;
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x68, size: 1, disassembly: "MOV L, B", func_symbols: "L <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.b;
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x69, size: 1, disassembly: "MOV L, C", func_symbols: "L <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.c;
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x6A, size: 1, disassembly: "MOV L, D", func_symbols: "L <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.d;
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x6A, size: 1, disassembly: "MOV L, D", func_symbols: "L <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.d;
+        }
+    });
+            
+    insert_instruction(optable, Instruction { opcode: 0x6B, size: 1, disassembly: "MOV L, E", func_symbols: "L <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.e;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x6C, size: 1, disassembly: "MOV L, H", func_symbols: "L <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.h;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x6D, size: 1, disassembly: "MOV L, L", func_symbols: "L <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.l;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x6E, size: 1, disassembly: "MOV L, M", func_symbols: "L <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.l = cpu.memory[addr];
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x6F, size: 1, disassembly: "MOV L, A", func_symbols: "L <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.l = cpu.a;
+        }
+    });
 }
 
 fn insert_instruction(optable: &mut HashMap<u8, Instruction>, instruction: Instruction) {
