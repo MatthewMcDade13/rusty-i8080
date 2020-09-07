@@ -25,6 +25,10 @@ impl ConditionBitset {
     pub fn is_set(&self, flag: ConditionFlag) -> bool {
         (self.0 & flag as u8) == flag as u8
     }
+
+    fn as_bit(&self, flag: ConditionFlag) -> u8 {
+        if self.is_set(flag) { 1 } else { 0 }
+    }
 }
 
 pub struct Instruction {
@@ -43,6 +47,8 @@ pub struct Cpu8080 {
     b: u8, c: u8,
     d: u8, e: u8,
     h: u8, l: u8,
+
+    halted: bool,
 
     memory: Vec<u8>,
     condition_codes: ConditionBitset,
@@ -69,6 +75,56 @@ impl Cpu8080 {
             panic!("OPCODE ERROR :: Opcode {:x} not found", opcode);
         }
 
+    }
+
+    fn adc(&mut self, val: u8) {
+        let (a, val, cy) = (self.a as u16, val as u16, self.condition_codes.as_bit(ConditionFlag::Carry) as u16);
+
+        let result = a + val + cy;
+
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        self.check_carry(result);
+        // aux carry
+        self.a = result as u8;
+    }
+
+    fn sbb(&mut self, val: u8) {
+        let (a, val, cy)  = (self.a as u16, val as u16, self.condition_codes.as_bit(ConditionFlag::Carry) as u16);
+
+        let result = a - val - cy;
+
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        self.check_carry(result);
+        // aux carry
+        self.a = result as u8;
+    }
+
+    fn add(&mut self, val: u8) {
+        let result = val as u16 + (self.a as u16);
+
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        self.check_carry(result);
+        // aux carry
+
+        self.a = result as u8;
+    }
+
+    fn sub(&mut self, val: u8) {
+        let result = self.a as u16 - val as u16;
+        
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        self.check_carry(result);
+        // aux carry
+
+        self.a = result as u8;
     }
 
     fn inr(&mut self, val: u8) -> u8 {
@@ -870,7 +926,153 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
             cpu.l = cpu.a;
         }
     });
+                
+    insert_instruction(optable, Instruction { opcode: 0x70, size: 1, disassembly: "MOV M, B", func_symbols: "(HL) <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.memory[addr] = cpu.b;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x72, size: 1, disassembly: "MOV M, D", func_symbols: "(HL) <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.memory[addr] = cpu.d;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x73, size: 1, disassembly: "MOV M, E", func_symbols: "(HL) <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.memory[addr] = cpu.e;
+        }
+    });
+                
+    insert_instruction(optable, Instruction { opcode: 0x74, size: 1, disassembly: "MOV M, H", func_symbols: "(HL) <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.memory[addr] = cpu.h;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x76, size: 1, disassembly: "HLT", func_symbols: "Halt - Processor is stopped", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.halted = true;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x77, size: 1, disassembly: "MOV M, A", func_symbols: "(HL) <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.memory[addr] = cpu.a;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x78, size: 1, disassembly: "MOV A, B", func_symbols: "A <- B", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.b;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x79, size: 1, disassembly: "MOV A, C", func_symbols: "A <- C", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.c;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x7A, size: 1, disassembly: "MOV A, D", func_symbols: "A <- D", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.d;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x7B, size: 1, disassembly: "MOV A, E", func_symbols: "A <- E", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.e;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x7C, size: 1, disassembly: "MOV A, H", func_symbols: "A <- H", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.h;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x7D, size: 1, disassembly: "MOV A, L", func_symbols: "A <- L", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.l;
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x7E, size: 1, disassembly: "MOV A, M", func_symbols: "A <- (HL)", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.a = cpu.memory[addr];
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x7F, size: 1, disassembly: "MOV A, A", func_symbols: "A <- A", effected_flags: None,
+        func_ptr: |cpu, _, _| { 
+            cpu.a = cpu.a;
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x80, size: 1, disassembly: "ADD B", func_symbols: "A <- A + B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.b);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x81, size: 1, disassembly: "ADD C", func_symbols: "A <- A + C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.c);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x82, size: 1, disassembly: "ADD D", func_symbols: "A <- A + D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.d);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x83, size: 1, disassembly: "ADD E", func_symbols: "A <- A + E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.e);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x84, size: 1, disassembly: "ADD H", func_symbols: "A <- A + H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.h);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x85, size: 1, disassembly: "ADD L", func_symbols: "A <- A + L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.l);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x86, size: 1, disassembly: "ADD M", func_symbols: "A <- A + (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.add(cpu.memory[addr]);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x87, size: 1, disassembly: "ADD A", func_symbols: "A <- A + A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.add(cpu.a);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x88, size: 1, disassembly: "ADC B", func_symbols: "A <- A + B + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.b);
+        }
+    });
 }
+                
 
 fn insert_instruction(optable: &mut HashMap<u8, Instruction>, instruction: Instruction) {
     optable.insert(instruction.opcode, instruction);
