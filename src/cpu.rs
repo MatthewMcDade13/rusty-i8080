@@ -1,3 +1,4 @@
+use std::num::Wrapping;
 use std::collections::HashMap;
 
 
@@ -77,10 +78,41 @@ impl Cpu8080 {
 
     }
 
+    fn read_u16(&self, addr: u16) -> u16 {
+        let addr = addr as usize;
+        let low = self.memory[addr];
+        let high = self.memory[addr + 1];
+        combine_bytes(high, low)
+    }
+
+    fn write_u16(&mut self, addr: u16, val: u16) {
+        let addr = addr as usize;
+
+        let mut high = self.memory[addr + 1];
+        let mut low = self.memory[addr];
+        set_byte_pair(&mut high, &mut low, val);
+        self.memory[addr + 1] = high;
+        self.memory[addr] = low;
+    }
+
+    fn ret(&mut self) {
+        self.pc = self.read_u16(self.sp);
+        self.sp += 2;
+    }
+
+    fn call(&mut self, addr: u16) {
+        self.write_u16(self.sp - 2, self.pc);
+
+        self.sp -= 2;
+        self.pc = addr;
+    }
+
     fn adc(&mut self, val: u8) {
+        use Wrapping as W;
         let (a, val, cy) = (self.a as u16, val as u16, self.condition_codes.as_bit(ConditionFlag::Carry) as u16);
 
-        let result = a + val + cy;
+        let result = W(a) + W(val) + W(cy);
+        let result = result.0;
 
         self.check_zero(result);
         self.check_sign(result);
@@ -91,9 +123,11 @@ impl Cpu8080 {
     }
 
     fn sbb(&mut self, val: u8) {
+        use Wrapping as W;
         let (a, val, cy)  = (self.a as u16, val as u16, self.condition_codes.as_bit(ConditionFlag::Carry) as u16);
 
-        let result = a - val - cy;
+        let result = W(a) - W(val) - W(cy);
+        let result = result.0;
 
         self.check_zero(result);
         self.check_sign(result);
@@ -104,7 +138,8 @@ impl Cpu8080 {
     }
 
     fn add(&mut self, val: u8) {
-        let result = val as u16 + (self.a as u16);
+        let result = Wrapping(val as u16) + Wrapping(self.a as u16);
+        let result = result.0;
 
         self.check_zero(result);
         self.check_sign(result);
@@ -116,8 +151,9 @@ impl Cpu8080 {
     }
 
     fn sub(&mut self, val: u8) {
-        let result = self.a as u16 - val as u16;
-        
+        let result = Wrapping(self.a as u16) - Wrapping(val as u16);
+        let result = result.0;
+
         self.check_zero(result);
         self.check_sign(result);
         self.check_parity(result as u32);
@@ -128,7 +164,8 @@ impl Cpu8080 {
     }
 
     fn inr(&mut self, val: u8) -> u8 {
-        let result = val as u16 + 1;
+        let result = Wrapping(val as u16) + Wrapping(1);
+        let result = result.0;
 
         self.check_zero(result);
         self.check_sign(result);
@@ -139,7 +176,8 @@ impl Cpu8080 {
     }
 
     fn dcr(&mut self, val: u8) -> u8 {
-        let result = val as u16 - 1;
+        let result = Wrapping(val as u16) - Wrapping(1);
+        let result = result.0;
 
         self.check_zero(result);
         self.check_sign(result);
@@ -147,6 +185,52 @@ impl Cpu8080 {
         // auxillary carry
 
         result as u8
+    }
+
+    fn ana(&mut self, val: u8) {
+        let result = (self.a as u16) & (val as u16);
+
+        self.check_carry(result);
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        // aux carry
+
+        self.a = result as u8;
+    }
+
+    fn xra(&mut self, val: u8) {
+        let result = (self.a as u16) ^ (val as u16);
+
+        self.check_carry(result);
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        // aux carry
+
+        self.a = result as u8;
+    }
+
+    fn ora(&mut self, val: u8) {
+        let result = (self.a as u16) | (val as u16);
+
+        self.check_carry(result);
+        self.check_zero(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
+        // aux carry
+
+        self.a = result as u8;
+    }
+
+    fn cmp(&mut self, val: u8) {
+        let result = Wrapping(self.a as u16) - Wrapping(val as u16);
+        let result = result.0;
+
+        self.check_zero(result);
+        self.check_carry(result);
+        self.check_sign(result);
+        self.check_parity(result as u32);
     }
 
     fn check_zero(&mut self, result: u16) -> bool {
@@ -206,7 +290,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x03, size: 1, disassembly: "INX B",     func_symbols: "BC <- BC + 1",             effected_flags: None, 
         func_ptr: |cpu, _, _|  { 
             let r = combine_bytes(cpu.b, cpu.c) + 1; 
-            set_register_pair(&mut cpu.b, &mut cpu.c, r) 
+            set_byte_pair(&mut cpu.b, &mut cpu.c, r) 
         } 
     });
     insert_instruction(optable, Instruction { opcode: 0x04, size: 1, disassembly: "INR B",     func_symbols: "B <- B + 1", effected_flags: "Z,S,P,AC".into(), 
@@ -247,7 +331,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
             let result = hl + bc;
             cpu.check_carry(result);
 
-            set_register_pair(&mut cpu.h, &mut cpu.l, result);
+            set_byte_pair(&mut cpu.h, &mut cpu.l, result);
         }
     });
 
@@ -261,7 +345,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x0B, size: 1, disassembly: "DCX B", func_symbols: "BC = BC-1", effected_flags: None,
         func_ptr: |cpu, _, _| { 
             let bc = combine_bytes(cpu.b, cpu.c);
-            set_register_pair(&mut cpu.b, &mut cpu.c, bc - 1);
+            set_byte_pair(&mut cpu.b, &mut cpu.c, bc - 1);
         }
     });
 
@@ -313,7 +397,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x13, size: 1, disassembly: "INX D", func_symbols: "DE <- DE + 1", effected_flags: None,
         func_ptr: |cpu, _, _| { 
             let result = combine_bytes(cpu.d, cpu.e) + 1;
-            set_register_pair(&mut cpu.d, &mut cpu.e, result);
+            set_byte_pair(&mut cpu.d, &mut cpu.e, result);
         }
     });
 
@@ -362,7 +446,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
 
             cpu.check_carry(result);
 
-            set_register_pair(&mut cpu.h, &mut cpu.l, result);
+            set_byte_pair(&mut cpu.h, &mut cpu.l, result);
         }
     });
 
@@ -376,7 +460,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x1B, size: 1, disassembly: "DCX D", func_symbols: "DE <- DE - 1", effected_flags: None,
         func_ptr: |cpu, _, _| { 
             let result = combine_bytes(cpu.d, cpu.e) - 1;
-            set_register_pair(&mut cpu.d, &mut cpu.e, result);
+            set_byte_pair(&mut cpu.d, &mut cpu.e, result);
         }
     });
 
@@ -430,7 +514,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x23, size: 1, disassembly: "INX H", func_symbols: "HL <- HL + 1", effected_flags: None,
         func_ptr: |cpu, _, _| { 
             let result = combine_bytes(cpu.h, cpu.l);
-            set_register_pair(&mut cpu.h, &mut cpu.l, result + 1);
+            set_byte_pair(&mut cpu.h, &mut cpu.l, result + 1);
         }
     });
 
@@ -488,7 +572,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
             let hl = combine_bytes(cpu.h, cpu.l) as u16;
             let result = hl + hl;
             cpu.check_carry(result);
-            set_register_pair(&mut cpu.h, &mut cpu.l, result);
+            set_byte_pair(&mut cpu.h, &mut cpu.l, result);
         }
     });
 
@@ -503,7 +587,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
     insert_instruction(optable, Instruction { opcode: 0x2B, size: 1, disassembly: "DCX H", func_symbols: "HL <- HL - 1", effected_flags: None,
         func_ptr: |cpu, _, _| { 
             let hl = combine_bytes(cpu.h, cpu.l);
-            set_register_pair(&mut cpu.h, &mut cpu.l, hl + 1);
+            set_byte_pair(&mut cpu.h, &mut cpu.l, hl + 1);
         }
     });
 
@@ -582,7 +666,7 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
             let hl = combine_bytes(cpu.h, cpu.l);
             let result = hl + cpu.sp;
             cpu.check_carry(result);
-            set_register_pair(&mut cpu.h, &mut cpu.l, result);           
+            set_byte_pair(&mut cpu.h, &mut cpu.l, result);           
         }
     });
 
@@ -1071,6 +1155,343 @@ fn fill_opcode_table(optable: &mut HashMap<u8, Instruction>) {
             cpu.adc(cpu.b);
         }
     });
+    
+    insert_instruction(optable, Instruction { opcode: 0x89, size: 1, disassembly: "ADC C", func_symbols: "A <- A + C + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.c);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x8A, size: 1, disassembly: "ADC D", func_symbols: "A <- A + D + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.d);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x8B, size: 1, disassembly: "ADC E", func_symbols: "A <- A + E + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.e);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x8C, size: 1, disassembly: "ADC H", func_symbols: "A <- A + H + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.h);
+        }
+    });
+    
+    insert_instruction(optable, Instruction { opcode: 0x8D, size: 1, disassembly: "ADC L", func_symbols: "A <- A + L + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x8E, size: 1, disassembly: "ADC M", func_symbols: "A <- A + (HL) + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.adc(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x8F, size: 1, disassembly: "ADC A", func_symbols: "A <- A + A + CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.adc(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x90, size: 1, disassembly: "SUB B", func_symbols: "A <- A - B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x91, size: 1, disassembly: "SUB C", func_symbols: "A <- A - C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x92, size: 1, disassembly: "SUB D", func_symbols: "A <- A - D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x93, size: 1, disassembly: "SUB E", func_symbols: "A <- A - E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x94, size: 1, disassembly: "SUB H", func_symbols: "A <- A - H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.h);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x95, size: 1, disassembly: "SUB L", func_symbols: "A <- A - L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x96, size: 1, disassembly: "SUB M", func_symbols: "A <- A - (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.sub(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x97, size: 1, disassembly: "SUB A", func_symbols: "A <- A - A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sub(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x98, size: 1, disassembly: "SBB B", func_symbols: "A <- A - B - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x99, size: 1, disassembly: "SBB C", func_symbols: "A <- A - C - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9A, size: 1, disassembly: "SBB D", func_symbols: "A <- A - D - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9B, size: 1, disassembly: "SBB E", func_symbols: "A <- A - E - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9C, size: 1, disassembly: "SBB H", func_symbols: "A <- A - H - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9D, size: 1, disassembly: "SBB L", func_symbols: "A <- A - L - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9E, size: 1, disassembly: "SBB M", func_symbols: "A <- A - (HL) - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.sbb(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0x9F, size: 1, disassembly: "SBB A", func_symbols: "A <- A - A - CY", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.sbb(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA0, size: 1, disassembly: "ANA B", func_symbols: "A <- A & B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA1, size: 1, disassembly: "ANA C", func_symbols: "A <- A & C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA2, size: 1, disassembly: "ANA D", func_symbols: "A <- A & D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA3, size: 1, disassembly: "ANA E", func_symbols: "A <- A & E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA4, size: 1, disassembly: "ANA H", func_symbols: "A <- A & H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.h);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA5, size: 1, disassembly: "ANA L", func_symbols: "A <- A & L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA6, size: 1, disassembly: "ANA M", func_symbols: "A <- A & (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.ana(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA7, size: 1, disassembly: "ANA A", func_symbols: "A <- A & A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ana(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA8, size: 1, disassembly: "XRA B", func_symbols: "A <- A ^ B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xA9, size: 1, disassembly: "XRA C", func_symbols: "A <- A ^ C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAA, size: 1, disassembly: "XRA D", func_symbols: "A <- A ^ D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAB, size: 1, disassembly: "XRA E", func_symbols: "A <- A ^ E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAC, size: 1, disassembly: "XRA H", func_symbols: "A <- A ^ H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.h);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAD, size: 1, disassembly: "XRA L", func_symbols: "A <- A ^ L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAE, size: 1, disassembly: "XRA M", func_symbols: "A <- A ^ (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.xra(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xAF, size: 1, disassembly: "XRA A", func_symbols: "A <- A ^ A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.xra(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB0, size: 1, disassembly: "ORA B", func_symbols: "A <- A | B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB1, size: 1, disassembly: "ORA C", func_symbols: "A <- A | C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB2, size: 1, disassembly: "ORA D", func_symbols: "A <- A | D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB3, size: 1, disassembly: "ORA E", func_symbols: "A <- A | E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB4, size: 1, disassembly: "ORA H", func_symbols: "A <- A | H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.h);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB5, size: 1, disassembly: "ORA L", func_symbols: "A <- A | L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB6, size: 1, disassembly: "ORA M", func_symbols: "A <- A | (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.ora(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB7, size: 1, disassembly: "ORA A", func_symbols: "A <- A | A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.ora(cpu.a);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB8, size: 1, disassembly: "CMP B", func_symbols: "A - B", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.b);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xB9, size: 1, disassembly: "CMP C", func_symbols: "A - C", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.c);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBA, size: 1, disassembly: "CMP D", func_symbols: "A - D", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.d);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBB, size: 1, disassembly: "CMP E", func_symbols: "A - E", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.e);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBC, size: 1, disassembly: "CMP H", func_symbols: "A - H", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.h);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBD, size: 1, disassembly: "CMP L", func_symbols: "A - L", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.l);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBE, size: 1, disassembly: "CMP M", func_symbols: "A - (HL)", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            let addr = combine_bytes(cpu.h, cpu.l) as usize;
+            cpu.cmp(cpu.memory[addr]);
+        }
+    });
+
+    insert_instruction(optable, Instruction { opcode: 0xBF, size: 1, disassembly: "CMP A", func_symbols: "A - A", effected_flags: "Z,S,P,CY,AC".into(),
+        func_ptr: |cpu, _, _| { 
+            cpu.cmp(cpu.a);
+        }
+    });
 }
                 
 
@@ -1078,7 +1499,7 @@ fn insert_instruction(optable: &mut HashMap<u8, Instruction>, instruction: Instr
     optable.insert(instruction.opcode, instruction);
 }
 
-fn set_register_pair(high: &mut u8, low: &mut u8, scalar: u16) {
+fn set_byte_pair(high: &mut u8, low: &mut u8, scalar: u16) {
     *low = scalar as u8;
     *high = (scalar >> 8) as u8;
 }
