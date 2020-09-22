@@ -16,6 +16,9 @@ pub enum ConditionFlag {
 
 pub struct ConditionBitset(u8);
 
+type HighU8 = u8;
+type LowU8 = u8;
+
 impl ConditionBitset {
     pub fn set(&mut self, flag: ConditionFlag) {
         self.0 &= flag as u8;
@@ -61,13 +64,13 @@ impl Cpu8080 {
     pub fn execute(&mut self, opcode: u8) {
         self.pc += 1;
 
-        if let Some(i) = self.opcode_table.get(opcode) {
-            let func = i.func_ptr;
+        if let Some(instruction) = self.opcode_table.get(opcode) {
+            let op = instruction.func_ptr;
             let pc = self.pc as usize;
-            match i.size {
-                1 => { func(self, 0, 0) },
-                2 => { func(self, self.memory[pc], 0); self.pc += 1; },
-                3 => { func(self, self.memory[pc], self.memory[pc + 1]); self.pc += 2; },
+            match instruction.size {
+                1 => { op(self, 0, 0) },
+                2 => { op(self, self.memory[pc], 0); self.pc += 1; },
+                3 => { op(self, self.memory[pc], self.memory[pc + 1]); self.pc += 2; },
                 _ => {}
             }
         } else {
@@ -78,16 +81,14 @@ impl Cpu8080 {
     }
 
     /**
-     * Increments stack pointer by 2 then pops value off of stack, which is returned in its parts (high, low)
-     * Returns as (high, low)
+     * Increments stack pointer by 2 then pops value off of stack, which is returned in its parts: (high, low)
      * */
-    pub fn pop_stack_parts(&mut self) -> (u8, u8) {
+    pub fn pop_stack_parts(&mut self) -> (HighU8, LowU8) {
         self.sp += 2;
         self.read_u16_parts(self.sp)
     }
 
-    pub fn pop_stack(&mut self) -> u16 
-    {
+    pub fn pop_stack(&mut self) -> u16 {
         let (high, low) = self.pop_stack_parts();
         combine_bytes(high, low)
     }
@@ -98,10 +99,9 @@ impl Cpu8080 {
     }
 
     /**
-     * Reads u16 from memory address and returns it in its high and low parts.
-     * Returns as (high, low)
+     * Reads u16 from memory address and returns it in its parts: (high, low)
      * */
-    pub fn read_u16_parts(&self, addr: u16) -> (u8, u8) {
+    pub fn read_u16_parts(&self, addr: u16) -> (HighU8, LowU8) {
         let addr = addr as usize;
         let low = self.memory[addr];
         let high = self.memory[addr + 1];
@@ -303,7 +303,6 @@ impl Cpu8080 {
             false
         }
     }
-
 }
 
 pub(crate) fn set_byte_pair(high: &mut u8, low: &mut u8, scalar: u16) {
